@@ -1,0 +1,94 @@
+POST http://localhost:3000/device/data
+Content-Type: application/json
+
+{
+  "serial": "RELOJ12345",
+  "FechaHora": "2026-03-20 12:30:00",
+  "Caida_Detectada": 0,
+  "Latitud": 10.987654,
+  "Longitud": -74.788123,
+  "Ritmo_Cardiaco": 78,
+  "Presion_Sistolica": 70,
+  "Presion_Diastolica": 80
+}
+
+
+###
+GET http://localhost:3000/device/data?serial=RELOJ12345 HTTP/1.1
+
+
+###
+GET http://localhost:3000/device/history?serial=RELOJ12345
+
+
+
+//usuarios
+
+###
+POST http://localhost:3000/users/register
+Content-Type: application/json
+
+{
+  "Nombre": "Carlos",
+  "Apellido": "Perez",
+  "email": "carlos1@email.com",
+  "password": "123456",
+  "Numero_telefono": "3001234567",
+  "Fecha_Nacimiento": "1990-05-10",
+  "Direccion_Residencia": "Barranquilla"
+}
+
+
+
+###
+POST http://localhost:3000/auth/login
+Content-Type: application/json
+
+{
+  "email": "carlos1@email.com",
+  "password": "123456"
+}
+
+
+//adultod
+
+###
+POST http://localhost:3000/adultos
+Content-Type: application/json
+
+{
+  "Nombre": "andrul",
+  "Apellido": "cueto",
+  "Fecha_Nacimiento": "1950-05-12",
+  "Genero": "Masculino",
+  "Peso": 70.5,
+  "Altura": 1.70,
+  "Grupo_Sanguineo": "O+",
+  "Condicion_Medica": "Hipertension",
+  "Telefono_Emergencia": "30094356543",
+  "IdUsuario": 2
+}
+
+
+###
+GET http://localhost:3000/adultos/usuario/2
+
+###
+GET http://localhost:3000/adultos/3
+
+
+//relojes
+
+###
+
+
+GET http://localhost:3000/relojes/adulto/1
+
+###
+GET http://localhost:3000/relojes/1
+
+
+//ver mediciones de adulto en la web
+
+###
+GET http://localhost:3000/mediciones/adulto/1
