@@ -1,94 +1,52 @@
-const express = require('express');
-const db = require('../db');
+import express from 'express';
+import db from '../db.js';
 
 const router = express.Router();
 
+// Crear un adulto
 router.post('/', (req, res) => {
-  const {
-    Nombre,
-    Apellido,
-    Fecha_Nacimiento,
-    Genero,
-    Peso,
-    Altura,
-    Grupo_Sanguineo,
-    Condicion_Medica,
-    Telefono_Emergencia,
-    IdUsuario
-  } = req.body;
+  const { nombre, apellido, fecha_nacimiento, genero, condiciones_medicas, contacto_emergencia } = req.body;
 
-  if (!Nombre || !Apellido || !Fecha_Nacimiento || !IdUsuario) {
-    return res.status(400).json({
-      message: 'Faltan campos obligatorios'
-    });
+  if (!nombre || !apellido) {
+    return res.status(400).json({ message: 'Nombre y apellido son obligatorios' });
   }
 
   const sql = `
-    INSERT INTO Adultos
-    (Nombre, Apellido, Fecha_Nacimiento, Genero, Peso, Altura, Grupo_Sanguineo, Condicion_Medica, Telefono_Emergencia, IdUsuario)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO adultos (nombre, apellido, fecha_nacimiento, genero, condiciones_medicas, contacto_emergencia)
+    VALUES (?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(
-    sql,
-    [
-      Nombre,
-      Apellido,
-      Fecha_Nacimiento,
-      Genero || null,
-      Peso || null,
-      Altura || null,
-      Grupo_Sanguineo || null,
-      Condicion_Medica || null,
-      Telefono_Emergencia || null,
-      IdUsuario
-    ],
-    (err, result) => {
-      if (err) {
-        console.error('Error insertando adulto:', err);
-        return res.status(500).json({ message: 'Error al registrar adulto' });
-      }
-
-      return res.status(201).json({
-        message: 'Adulto registrado correctamente',
-        IdAdulto: result.insertId
-      });
-    }
-  );
-});
-
-router.get('/usuario/:idUsuario', (req, res) => {
-  const { idUsuario } = req.params;
-
-  const sql = 'SELECT * FROM Adultos WHERE IdUsuario = ?';
-
-  db.query(sql, [idUsuario], (err, results) => {
+  db.query(sql, [nombre, apellido, fecha_nacimiento, genero, condiciones_medicas, contacto_emergencia], (err, result) => {
     if (err) {
-      console.error('Error obteniendo adultos:', err);
-      return res.status(500).json({ message: 'Error al consultar adultos' });
+      console.error('Error creando adulto:', err);
+      return res.status(500).json({ message: 'Error al crear adulto' });
     }
 
-    return res.json(results);
+    res.status(201).json({
+      message: 'Adulto creado correctamente',
+      id_adulto: result.insertId
+    });
   });
 });
 
-router.get('/:idAdulto', (req, res) => {
-  const { idAdulto } = req.params;
-
-  const sql = 'SELECT * FROM Adultos WHERE IdAdulto = ?';
-
-  db.query(sql, [idAdulto], (err, results) => {
-    if (err) {
-      console.error('Error obteniendo adulto:', err);
-      return res.status(500).json({ message: 'Error al consultar adulto' });
-    }
-
-    if (results.length === 0) {
-      return res.status(404).json({ message: 'Adulto no encontrado' });
-    }
-
-    return res.json(results[0]);
+// Obtener todos los adultos
+router.get('/', (req, res) => {
+  const sql = 'SELECT * FROM adultos';
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ message: 'Error DB' });
+    res.json(results);
   });
 });
 
-module.exports = router;
+// Obtener un adulto por ID
+router.get('/:id_adulto', (req, res) => {
+  const { id_adulto } = req.params;
+  const sql = 'SELECT * FROM adultos WHERE id_adulto = ?';
+  db.query(sql, [id_adulto], (err, results) => {
+    if (err) return res.status(500).json({ message: 'Error DB' });
+    if (results.length === 0) return res.status(404).json({ message: 'No encontrado' });
+    res.json(results[0]);
+  });
+});
+
+export default router;

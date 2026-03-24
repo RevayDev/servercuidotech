@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CuidoTech - Centro de Control</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            appbg: '#0A0A0A',
+            panel: '#101216',
+            panelborder: '#1F222A',
+            neon: '#00E5FF',
+            neondark: 'rgba(0, 229, 255, 0.1)',
+            warning: '#FACC15',
+            danger: '#FF3B30'
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #080A0E;
+      color: #E2E8F0;
+    }
+    .neon-text { text-shadow: 0 0 10px rgba(0, 229, 255, 0.5); }
+    .neon-border { box-shadow: 0 0 15px rgba(0, 229, 255, 0.2); }
+    .danger-border { box-shadow: 0 0 15px rgba(255, 59, 48, 0.3); }
+
+    /* Custom Scrollbar for dark theme */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #0A0A0A; }
+    ::-webkit-scrollbar-thumb { background: #1F222A; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #333842; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+  <div class="max-w-full mx-auto px-4 lg:px-12 pb-12">
+    
+    <!-- Top Header mimicking emulator -->
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-neondark border border-neon/30 flex items-center justify-center">
+          <svg class="w-6 h-6 text-neon" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.381z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-white tracking-wide">Dashboard CuidoTech</h1>
+          <p class="text-slate-400 text-sm mt-0.5 flex items-center gap-2">
+            Monitoreo en vivo vía WebSockets. Servidor conectado: 
+            <span class="bg-neon/20 text-neon px-2 py-0.5 rounded text-xs font-mono border border-neon/30">ws://localhost:3000</span>
+          </p>
+        </div>
+      </div>
+      
+      <div class="flex gap-4">
+        <!-- Badge -->
+        <div class="px-4 py-2 rounded-full border border-neon/30 bg-neondark flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-neon animate-pulse"></div>
+          <span class="text-neon text-xs font-semibold tracking-widest uppercase">EN LÍNEA</span>
+        </div>
+        <div class="px-4 py-2 rounded-full border border-slate-700 bg-panel flex items-center gap-2">
+          <span class="text-slate-300 text-xs font-semibold tracking-widest uppercase">MODO MONITOREO</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Panel de Dispositivos (Left sidebar) -->
+      <div class="lg:col-span-4 flex flex-col gap-6">
+        
+        <!-- Header de la sección (Alineado h-96 con la grafica) -->
+        <div class="bg-panel border border-panelborder rounded-xl flex flex-col h-96 shadow-lg overflow-hidden">
+          <div class="flex border-b border-panelborder">
+            <div id="tab-relojes" class="flex-1 py-3 text-center border-b-2 border-neon text-neon text-xs font-bold tracking-widest uppercase cursor-pointer">
+              RELOJES
+            </div>
+            <div id="tab-logs" class="flex-1 py-3 text-center border-b-2 border-transparent text-slate-500 text-xs font-bold tracking-widest uppercase hover:text-slate-300 cursor-pointer transition-colors">
+              LOGS
+            </div>
+          </div>
+          
+          <div class="p-3 bg-black/20 border-b border-panelborder">
+             <select id="device-select" class="w-full bg-black border border-panelborder text-slate-400 text-[10px] font-bold tracking-widest uppercase rounded px-3 py-2 outline-none focus:border-neon transition-colors">
+                <option value="">TODOS LOS DISPOSITIVOS</option>
+             </select>
+          </div>
+          
+          <div class="p-4 flex-1 overflow-y-auto custom-scrollbar">
+            <div id="devices-container" class="block">
+              <div class="text-center text-slate-500 py-8 text-sm">Cargando datos...</div>
+            </div>
+            <div id="system-logs" class="hidden font-mono text-[10px] text-slate-400 space-y-1">
+              <span class="text-neon/70">[SYS] Iniciando monitor en tiempo real...</span><br>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Panel del Centro / Gráficas (Right main) -->
+      <div class="lg:col-span-8 flex flex-col gap-6">
+        
+        <!-- Titulo removido para mas espacio -->
+
+        <!-- Área de la Gráfica -->
+        <div class="bg-panel border border-panelborder rounded-xl p-6 shadow-lg h-96 relative neon-border" id="chart-panel">
+          
+          <div class="absolute top-6 right-6 text-right">
+            <span class="block text-slate-400 text-xs tracking-widest uppercase mb-1">ÚLTIMA LECTURA</span>
+            <span class="text-3xl font-bold text-neon" id="last-hr-val">--</span> <span class="text-slate-500 text-sm">LPM</span>
+          </div>
+
+          <!-- Canvas container -->
+          <div class="w-full h-full pt-8">
+            <canvas id="hrChart"></canvas>
+          </div>
+        </div>
+
+      </div> <!-- Fin Panel del Centro -->
+
+      <!-- Detalles Expandidos (Spans 12 cols below) -->
+      <div class="lg:col-span-12">
+        <div class="bg-panel border border-panelborder rounded-xl p-6 shadow-lg">
+          <h3 class="text-neon text-xs font-bold tracking-widest uppercase mb-4 flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            DETALLES DEL DISPOSITIVO
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="device-details">
+            <div class="bg-black/40 border border-panelborder p-5 rounded-xl shadow-inner group hover:border-neon/30 transition-colors">
+              <span class="text-slate-500 text-[10px] font-bold block mb-2 uppercase tracking-[0.2em]">Última Conexión</span>
+              <span class="text-white text-lg font-mono tracking-wider" id="detail-time">--:--:--</span>
+            </div>
+            <div class="bg-black/40 border border-panelborder p-5 rounded-xl shadow-inner group hover:border-neon/30 transition-colors">
+              <span class="text-slate-500 text-[10px] font-bold block mb-2 uppercase tracking-[0.2em]">Batería Restante</span>
+              <span class="text-neon text-lg font-mono tracking-wider" id="detail-bat">--%</span>
+            </div>
+            <div class="bg-black/40 border border-panelborder p-5 rounded-xl shadow-inner group hover:border-neon/30 transition-colors">
+              <span class="text-slate-500 text-[10px] font-bold block mb-2 uppercase tracking-[0.2em]">Coordenadas GPS</span>
+              <span class="text-white text-sm font-mono tracking-tight" id="detail-gps">00.0000, 00.0000</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let chartInstance = null;
+    let currentDevice = null;
+    let devicesData = {};
+
+    function addLog(msg) {
+      const logs = document.getElementById('system-logs');
+      const time = new Date().toLocaleTimeString();
+      logs.innerHTML += `<span><span class="text-slate-600">[${time}]</span> ${msg}</span><br>`;
+      logs.scrollTop = logs.scrollHeight;
+    }
+
+    const ctx = document.getElementById('hrChart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'LPM',
+          data: [],
+          borderColor: '#00E5FF',
+          backgroundColor: 'rgba(0, 229, 255, 0.05)',
+          borderWidth: 2,
+          tension: 0.3,
+          fill: true,
+          pointBackgroundColor: '#0A0A0A',
+          pointBorderColor: '#00E5FF',
+          pointBorderWidth: 2,
+          pointRadius: 3,
+          pointHoverRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { 
+            grid: { color: 'rgba(255, 255, 255, 0.02)', drawBorder: false },
+            ticks: { color: '#64748B', font: { family: 'ui-monospace' } }
+          },
+          y: { 
+            grid: { color: 'rgba(255, 255, 255, 0.05)', borderDash: [5, 5] },
+            ticks: { color: '#64748B', font: { family: 'ui-monospace' } },
+            suggestedMin: 50,
+            suggestedMax: 150
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#101216',
+            titleColor: '#00E5FF',
+            bodyColor: '#E2E8F0',
+            borderColor: '#1F222A',
+            borderWidth: 1,
+            padding: 12,
+            font: { family: 'Inter' }
+          }
+        },
+        animation: { duration: 300 } // snappy
+      }
+    });
+
+    function getSeverity(d) {
+      if (d.fallDetected || d.mode === 'SOS' || d.mode === 'CAIDA' || d.heartRate > 150 || d.heartRate < 40) return 'danger';
+      if (d.mode === 'RITMO_CRITICO' || d.heartRate > 120 || d.heartRate < 50) return 'warning';
+      return 'normal';
+    }
+
+    function renderDeviceCards() {
+      const container = document.getElementById('devices-container');
+      container.innerHTML = '';
+      
+      const select = document.getElementById('device-select');
+      const currentSelection = select.value;
+      select.innerHTML = '';
+
+      Object.values(devicesData).forEach(d => {
+        const option = document.createElement('option');
+        option.value = d.device_id;
+        option.textContent = 'Disp: ' + d.device_id;
+        select.appendChild(option);
+
+        const severity = getSeverity(d);
+        let cardBorder = 'border border-panelborder hover:border-neon/30';
+        let statusClass = 'border-neon/30 bg-neondark text-neon';
+        let hrColor = 'text-neon';
+        let statusLabel = d.estado || 'OK';
+
+        if (severity === 'danger') {
+          cardBorder = 'border border-danger/50 danger-border';
+          statusClass = 'border-danger/30 bg-danger/10 text-danger';
+          hrColor = 'text-danger';
+          statusLabel = 'PELIGRO';
+        } else if (severity === 'warning') {
+          cardBorder = 'border border-warning/50 shadow-[0_0_15px_rgba(250,204,21,0.2)]';
+          statusClass = 'border-warning/30 bg-warning/10 text-warning';
+          hrColor = 'text-warning';
+          statusLabel = 'ADVERTENCIA';
+        }
+        
+        const html = `
+          <div onclick="selectDevice('${d.device_id}')" class="bg-black/40 rounded-lg p-4 mb-3 ${cardBorder} transition-all duration-300 cursor-pointer">
+            <div class="flex items-center justify-between border-b border-panelborder pb-3 mb-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-14 rounded-lg border-2 border-neon bg-black flex flex-col justify-center items-center py-1">
+                  <div class="text-[0.5rem] text-neon/60 mb-1">▶</div>
+                  <div class="w-6 h-6 flex items-center justify-center">
+                    <svg class="w-4 h-4 ${hrColor}" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"></path></svg>
+                  </div>
+                </div>
+                <div>
+                  <h3 class="text-sm font-bold text-white tracking-wide">${d.device_id}</h3>
+                  <span class="text-xs text-slate-500 font-mono">BAT: <span class="text-neon">${d.bateria || '--'}%</span></span>
+                </div>
+              </div>
+              <div class="rounded-full border ${statusClass} px-2 py-1 text-[0.65rem] font-bold tracking-widest uppercase flex items-center gap-1">
+                <div class="w-1.5 h-1.5 rounded-full ${severity !== 'normal' ? 'bg-current animate-pulse' : 'bg-neon'}"></div>
+                ${statusLabel}
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="bg-black/50 border border-panelborder p-2 rounded">
+                <span class="block text-slate-500 mb-1">Ritmo Clínico</span>
+                <span class="text-lg font-bold ${hrColor} font-mono">${d.heartRate || '--'} <span class="text-xs text-slate-600 font-sans">LPM</span></span>
+              </div>
+              <div class="bg-black/50 border border-panelborder p-2 rounded">
+                <span class="block text-slate-500 mb-1">Estado</span>
+                <span class="font-bold ${severity === 'danger' ? 'text-danger' : (severity === 'warning' ? 'text-warning' : 'text-slate-300')} text-[10px]">${d.fallDetected ? 'CAÍDA DET.' : (d.mode || 'ESTABLE')}</span>
+              </div>
+            </div>
+          </div>
+        `;
+        container.innerHTML += html;
+      });
+
+      if(currentSelection && devicesData[currentSelection]) {
+        select.value = currentSelection;
+      } else if (Object.keys(devicesData).length > 0 && !currentDevice) {
+        selectDevice(Object.keys(devicesData)[0]);
+      }
+    }
+
+    function selectDevice(id) {
+      document.getElementById('device-select').value = id;
+      loadHistory(id);
+    }
+
+    async function loadHistory(serial) {
+      if(!serial) return;
+      currentDevice = serial;
+      
+      const d = devicesData[serial];
+      if (d) {
+        const severity = getSeverity(d);
+        const hrEle = document.getElementById('last-hr-val');
+        hrEle.textContent = d.heartRate || '--';
+        
+        let color = '#00E5FF';
+        if (severity === 'danger') {
+          hrEle.className = 'text-3xl font-bold text-danger';
+          color = '#FF3B30';
+        } else if (severity === 'warning') {
+          hrEle.className = 'text-3xl font-bold text-warning';
+          color = '#FACC15';
+        } else {
+          hrEle.className = 'text-3xl font-bold text-neon';
+        }
+
+        document.getElementById('detail-time').textContent = new Date(d.timestamp).toLocaleTimeString();
+        document.getElementById('detail-bat').textContent = (d.bateria || '--') + '%';
+        document.getElementById('detail-gps').textContent = d.lat ? `${parseFloat(d.lat).toFixed(4)}, ${parseFloat(d.lng).toFixed(4)}` : '0.000, 0.000';
+
+        chartInstance.data.datasets[0].borderColor = color;
+        chartInstance.data.datasets[0].pointBorderColor = color;
+        chartInstance.data.datasets[0].backgroundColor = color + '1A'; // Alpha 0.1
+      }
+
+      try {
+        const res = await fetch(`/device/history?serial=${serial}`);
+        const data = await res.json();
+        const sortedData = data.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+        const recentData = sortedData.slice(-50);
+        
+        chartInstance.data.labels = recentData.map(d => new Date(d.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+        chartInstance.data.datasets[0].data = recentData.map(d => d.heartRate);
+        chartInstance.update();
+      } catch (err) {
+        addLog(`<span class="text-danger">Error cargando historial</span>`);
+      }
+    }
+
+    // Tabs logic
+    document.getElementById('tab-relojes').addEventListener('click', () => {
+      document.getElementById('devices-container').classList.remove('hidden');
+      document.getElementById('system-logs').classList.add('hidden');
+      document.getElementById('tab-relojes').className = "flex-1 py-3 text-center border-b-2 border-neon text-neon text-xs font-bold tracking-widest uppercase cursor-pointer";
+      document.getElementById('tab-logs').className = "flex-1 py-3 text-center border-b-2 border-transparent text-slate-500 text-xs font-bold tracking-widest uppercase hover:text-slate-300 cursor-pointer transition-colors";
+    });
+
+    document.getElementById('tab-logs').addEventListener('click', () => {
+      document.getElementById('devices-container').classList.add('hidden');
+      document.getElementById('system-logs').classList.remove('hidden');
+      document.getElementById('tab-logs').className = "flex-1 py-3 text-center border-b-2 border-neon text-neon text-xs font-bold tracking-widest uppercase cursor-pointer";
+      document.getElementById('tab-relojes').className = "flex-1 py-3 text-center border-b-2 border-transparent text-slate-500 text-xs font-bold tracking-widest uppercase hover:text-slate-300 cursor-pointer transition-colors";
+    });
+
+    document.getElementById('device-select').addEventListener('change', (e) => {
+      loadHistory(e.target.value);
+    });
+
+    async function init() {
+      try {
+        const res = await fetch('/dash/data');
+        const data = await res.json();
+        data.forEach(d => {
+          devicesData[d.device_id] = d;
+        });
+        renderDeviceCards();
+      } catch (err) {
+        addLog(`<span class="text-danger">Error de inicio</span>`);
+      }
+    }
+
+    socket.on('nueva_medicion', (data) => {
+      const id = data.device_id || data.id_device || data.serial;
+      const oldDev = devicesData[id] || {};
+      devicesData[id] = { ...oldDev, ...data };
+      renderDeviceCards();
+
+      const sev = getSeverity(data);
+      let logColor = 'text-slate-400';
+      if(sev === 'danger') logColor = 'text-danger font-bold';
+      else if(sev === 'warning') logColor = 'text-warning';
+
+      addLog(`<span class="${logColor}">Inbound [${id}] - HR: ${data.heartRate} | Mode: ${data.mode}</span>`);
+
+      if (currentDevice === id) {
+        const d = devicesData[id];
+        const severity = getSeverity(d);
+        
+        chartInstance.data.labels.push(new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+        chartInstance.data.datasets[0].data.push(data.heartRate);
+        if (chartInstance.data.labels.length > 50) {
+          chartInstance.data.labels.shift();
+          chartInstance.data.datasets[0].data.shift();
+        }
+
+        // Color chart based on current severity
+        let color = '#00E5FF';
+        if (severity === 'danger') color = '#FF3B30';
+        else if (severity === 'warning') color = '#FACC15';
+
+        chartInstance.data.datasets[0].borderColor = color;
+        chartInstance.data.datasets[0].pointBorderColor = color;
+        chartInstance.data.datasets[0].backgroundColor = color + '1A';
+        chartInstance.update();
+
+        const hrEle = document.getElementById('last-hr-val');
+        hrEle.textContent = data.heartRate;
+        hrEle.className = severity === 'danger' ? 'text-3xl font-bold text-danger' : (severity === 'warning' ? 'text-3xl font-bold text-warning' : 'text-3xl font-bold text-neon');
+        
+        document.getElementById('detail-time').textContent = new Date(data.timestamp).toLocaleTimeString();
+        document.getElementById('detail-bat').textContent = (data.bateria || d.bateria || '--') + '%';
+        document.getElementById('detail-gps').textContent = data.lat ? `${parseFloat(data.lat).toFixed(4)}, ${parseFloat(data.lng).toFixed(4)}` : '0.000, 0.000';
+
+        if(severity === 'danger') {
+           document.getElementById('chart-panel').className = "bg-panel border border-danger/50 rounded-xl p-6 shadow-lg h-96 relative danger-border transition-all";
+        } else if(severity === 'warning') {
+           document.getElementById('chart-panel').className = "bg-panel border border-warning/50 rounded-xl p-6 shadow-lg h-96 relative shadow-[0_0_15px_rgba(250,204,21,0.2)] transition-all";
+        } else {
+           document.getElementById('chart-panel').className = "bg-panel border border-panelborder rounded-xl p-6 shadow-lg h-96 relative neon-border transition-all";
+        }
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

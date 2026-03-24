@@ -1,26 +1,20 @@
-const express = require('express');
-const bcrypt = require('bcryptjs');
-const db = require('../db');
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import db from '../db.js';
 
 const router = express.Router();
 
 router.post('/register', async (req, res) => {
   try {
-    const Nombre = req.body.Nombre ?? req.body.nombre;
-    const Apellido = req.body.Apellido ?? req.body.apellido;
-    const Email = req.body.Email ?? req.body.email;
-    const Password = req.body.Password ?? req.body.password;
-    const Numero_telefono = req.body.Numero_telefono ?? req.body.numero_telefono ?? req.body.Telefono ?? req.body.telefono;
-    const Fecha_Nacimiento = req.body.Fecha_Nacimiento ?? req.body.fecha_nacimiento;
-    const Direccion_Residencia = req.body.Direccion_Residencia ?? req.body.direccion_residencia ?? null;
+    const { nombre, apellido, email, password, telefono, rol } = req.body;
 
-    if (!Nombre || !Apellido || !Email || !Password || !Numero_telefono || !Fecha_Nacimiento) {
-      return res.status(400).json({ message: 'Faltan campos obligatorios' });
+    if (!nombre || !apellido || !email || !password) {
+      return res.status(400).json({ message: 'Faltan campos obligatorios (nombre, apellido, email, password)' });
     }
 
-    const sqlCheck = 'SELECT IdUsuario FROM Usuarios WHERE email = ?';
-
-    db.query(sqlCheck, [Email], async (err, results) => {
+    // 1. Check if email already exists
+    const sqlCheck = 'SELECT id_usuario FROM usuarios WHERE email = ?';
+    db.query(sqlCheck, [email], async (err, results) => {
       if (err) {
         console.error('Error verificando email:', err);
         return res.status(500).json({ message: 'Error al verificar usuario' });
@@ -30,25 +24,18 @@ router.post('/register', async (req, res) => {
         return res.status(409).json({ message: 'Ese email ya está registrado' });
       }
 
-      const hashedPassword = await bcrypt.hash(Password, 10);
+      // 2. Hash password
+      const hashedPassword = await bcrypt.hash(password, 10);
 
+      // 3. Insert new user
       const sqlInsert = `
-        INSERT INTO Usuarios
-        (Nombre, Apellido, email, password, Fecha_Nacimiento, Direccion_Residencia, Numero_telefono)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO usuarios (nombre, apellido, email, password, telefono, rol)
+        VALUES (?, ?, ?, ?, ?, ?)
       `;
 
       db.query(
         sqlInsert,
-        [
-          Nombre,
-          Apellido,
-          Email,
-          hashedPassword,
-          Fecha_Nacimiento,
-          Direccion_Residencia,
-          Numero_telefono
-        ],
+        [nombre, apellido, email, hashedPassword, telefono || null, rol || 'familiar'],
         (err2, result) => {
           if (err2) {
             console.error('Error insertando usuario:', err2);
@@ -57,7 +44,7 @@ router.post('/register', async (req, res) => {
 
           return res.status(201).json({
             message: 'Usuario registrado correctamente',
-            IdUsuario: result.insertId
+            id_usuario: result.insertId
           });
         }
       );
@@ -68,4 +55,4 @@ router.post('/register', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

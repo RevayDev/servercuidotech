@@ -1,48 +1,39 @@
-const express = require('express');
-const bcrypt = require('bcryptjs');
-const db = require('../db');
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import db from '../db.js';
 
 const router = express.Router();
 
 router.post('/login', (req, res) => {
-  const Email = req.body.Email ?? req.body.email;
-  const Password = req.body.Password ?? req.body.password;
+  const { email, password } = req.body;
 
-  if (!Email || !Password) {
-    return res.status(400).json({
-      message: 'Email y contraseña son obligatorios'
-    });
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email y password obligatorios' });
   }
 
-  const sql = 'SELECT * FROM Usuarios WHERE email = ?';
+  const sql = 'SELECT * FROM usuarios WHERE email = ?';
 
-  db.query(sql, [Email], async (err, results) => {
-    if (err) {
-      console.error('Error buscando usuario:', err);
-      return res.status(500).json({ message: 'Error al iniciar sesión' });
-    }
+  db.query(sql, [email], async (err, results) => {
+    if (err) return res.status(500).json({ message: 'Error DB' });
 
     if (results.length === 0) {
-      return res.status(401).json({ message: 'Credenciales incorrectas' });
+      return res.status(401).json({ message: 'Usuario no encontrado' });
     }
 
-    const usuario = results[0];
-    const passwordOk = await bcrypt.compare(Password, usuario.password);
+    const user = results[0];
+    const isMatch = await bcrypt.compare(password, user.password);
 
-    if (!passwordOk) {
-      return res.status(401).json({ message: 'Credenciales incorrectas' });
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Contraseña incorrecta' });
     }
 
-    return res.json({
+    // Return user without password
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({
       message: 'Login exitoso',
-      usuario: {
-        IdUsuario: usuario.IdUsuario,
-        Nombre: usuario.Nombre,
-        Apellido: usuario.Apellido,
-        Email: usuario.email
-      }
+      user: userWithoutPassword
     });
   });
 });
 
-module.exports = router;
+export default router;
