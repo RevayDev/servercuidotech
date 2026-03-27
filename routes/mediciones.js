@@ -10,29 +10,23 @@ router.post('/', async (req, res) => {
   let { device_id, api_key, heartRate, fallDetected, signalStrength, lat, lng, mode } = req.body;
 
   // Si envían serial o id_device (compatibilidad con emulador antíguo), lo mapeamos
-  device_id = device_id || req.body.serial || req.body.id_device;
+  let serial = req.body.serial || req.body.id_device || req.body.device_id;
   
-  if (!device_id) {
-    return res.status(400).json({ error: 'Falta device_id en la petición' });
+  if (!serial) {
+    return res.status(400).json({ error: 'Falta serial o device_id en la petición' });
   }
 
   try {
-    // Validar device_id
-    const [devices] = await db.query('SELECT * FROM devices WHERE device_id = ?', [device_id]);
+    // Validar serial (llamado device_id en la tabla devices)
+    const [devices] = await db.query('SELECT * FROM devices WHERE device_id = ?', [serial]);
     
-    // Auto-registrar dispositivo si no existe (opcional para prototipo, pero el script pide validarlo)
-    // Para no bloquear la simulación si la base de datos está vacía, lo crearemos
-    let device = devices[0];
-    if (!device) {
-       // Insertamos el device para que la FK mediciones -> devices no falle
-       const dummyApiKey = api_key || 'default_key';
-       await db.query('INSERT INTO devices (device_id, api_key) VALUES (?, ?)', [device_id, dummyApiKey]);
-       device = { device_id, api_key: dummyApiKey };
-    } else {
-       if (api_key && device.api_key !== api_key) {
-         return res.status(401).json({ error: 'API Key inválida' });
-       }
+    if (devices.length === 0) {
+       // Auto-registro
+       const apiKey = 'auto-' + serial;
+       await db.query('INSERT INTO devices (device_id, api_key, estado) VALUES (?, ?, ?)', [serial, apiKey, 'activo']);
     }
+    
+    let deviceIdToInsert = serial; // La FK es sobre el string device_id
 
     // Insertar en mediciones
     const sql = `
@@ -41,13 +35,13 @@ router.post('/', async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
     const values = [
-      device_id,
+      deviceIdToInsert,
       heartRate || req.body.Ritmo_Cardiaco || null,
       fallDetected !== undefined ? fallDetected : (req.body.Caida_Detectada || false),
       signalStrength || 100,
       lat || req.body.gps?.lat || req.body.Latitud || null,
       lng || req.body.gps?.lng || req.body.Longitud || null,
-      mode || req.body.alertType || 'estable'
+      mode || req.body.alertType || 'NORMAL'
     ];
 
     const [result] = await db.query(sql, values);

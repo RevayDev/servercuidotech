@@ -49,7 +49,6 @@ async function handleTelemetry(req, res, forceType = null) {
 
   try {
     // 1. Get or register device
-    // Use INSERT IGNORE to prevent race conditions causing duplicate entry errors
     const apiKey = 'auto-' + data.serial;
     await db.query('INSERT IGNORE INTO devices (device_id, api_key) VALUES (?, ?)', [data.serial, apiKey]);
     let deviceId = data.serial;
